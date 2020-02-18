@@ -1,0 +1,312 @@
+#Modules
+from getpass import getpass
+from colorama import init
+from colorama import Fore
+import os
+import shutil
+import sys
+import string
+import random
+from cryptography.fernet import Fernet 
+import time
+import mysql.connector
+import _cffi_backend
+
+
+
+#Récupère le chemin vers le programme 
+
+#root = os.path.dirname(__file__) -> A utiliser si c'est pas un executable
+
+if getattr(sys, 'frozen', False):
+    # frozen
+    root = os.path.dirname(sys.executable)
+else:
+    # unfrozen
+    root = os.path.dirname(os.path.realpath(__file__))
+
+#Récupère le chemin vers le dossier où se trouve le .py
+path = os.path.join(root)
+
+
+print("\n\n"\
+			"		--------------  Bienvenue !  ------------\n\n\n"\
+		    "		██████╗ ███████╗███████╗██╗    ██╗██████╗\n"\
+			"		██╔══██╗██╔════╝██╔════╝██║    ██║██╔══██╗\n"\
+			"		██████╔╝███████╗███████╗██║ █╗ ██║██║  ██║\n"\
+			"		██╔═══╝ ╚════██║╚════██║██║███╗██║██║  ██║\n"\
+			"		██║     ███████║███████║╚███╔███╔╝██████╔╝\n"\
+			"		╚═╝     ╚══════╝╚══════╝ ╚══╝╚══╝ ╚═════╝ \n\n\n"\
+			"		-----------  Version 0.1 Beta  ----------\n\n\n")
+
+
+try:
+	path = os.path.join("cle")
+	path = os.path.join(root, path)
+	cle = open(path, "r")
+	key = cle.read()
+	key = key.encode("utf-8")
+
+
+except:
+	print(Fore.RED + "\nC'est la première fois que vous lancez le gestionnaire de mots de passe."\
+		"Une clé de cryptage a été génerée dans le fichier 'cle'. Ne touchez pas à ce fichier ! \n"\
+		"Vous aurez besoin de votre administrateur système par la suite.")
+	print(Fore.RESET)
+	path = os.path.join("cle")
+	path = os.path.join(root, path)
+	cle = open(path, "w")
+	key = Fernet.generate_key()
+	key = key.decode("utf-8")
+	cle.write(key)
+	cle.close()
+	print(key)
+	key = key.encode("utf-8")
+
+
+f = Fernet(key)
+
+while True:
+	choix = input("Avez-vous déja un compte ? (o/n) : ")
+	if choix == "o":
+		nom = input("\nEntrez votre nom et prénom (prenom.nom): ")
+		mdp = getpass("\nEntrez votre mot de passe: ")
+	
+		#Connexion à la base de données.
+		try:
+			conn = mysql.connector.connect(user = nom, password = mdp,
+								host = 'localhost',
+								database = 'psswd_db')
+			cursor = conn.cursor()
+
+		except:
+			print(Fore.RED + "Mauvais identifiant ou mot de passe !")
+			print(Fore.RESET)
+			continue
+
+	elif choix == "n":
+		nom = input("Entrez l'identifiant administrateur: ")
+		mdp = getpass("\nEntrez le mot de passe administrateur: ")
+
+		#Connexion à la base de donnée en tant qu'admin.
+		try:
+			conn = mysql.connector.connect(user = nom, password = mdp,
+								host = 'localhost')
+								
+			cursor = conn.cursor()
+
+			cursor.execute("CREATE DATABASE IF NOT EXISTS psswd_db")
+
+			conn = mysql.connector.connect(user = nom, password = mdp,
+								host = 'localhost',
+								database = 'psswd_db')
+			cursor = conn.cursor()
+
+
+			print(Fore.BLUE + "Vous pouvez maintenant vous enregistrer. \n")
+			print(Fore.RESET)
+			
+		except:
+			print(Fore.RED + "\nMauvais identifiant ou mot de passe !")
+			print(Fore.RESET)
+
+			continue
+	
+		#Entrer les nouveaux identifiants utilisateur :
+		nom = input("Entrez votre identifiant: ")
+		mdp = input("\nEntrez votre mot de passe: ")
+		mdp2 = input("\nEntrez à nouveau votre mot de passe: ")
+		
+		if mdp != mdp2:
+			print(Fore.RED + "\nLes mots de passe ne correspondent pas ! Réessayez à nouveau. \n")
+			print(Fore.RESET)
+			continue
+
+		#Créé l'utilisateur.
+		cursor.execute("CREATE USER IF NOT EXISTS '%s'@'localhost' IDENTIFIED BY '%s';"%(nom, mdp))
+		conn.commit()
+		print(Fore.BLUE + "Vous êtes bien enregistré !")
+		print(Fore.RESET)
+
+		#Créé une table au nom de l'utilisateur.
+		cursor.execute("CREATE TABLE IF NOT EXISTS %s (id VARCHAR(50) PRIMARY KEY NOT NULL, mail VARCHAR(50) NOT NULL, mdp VARCHAR(1024) NOT NULL)"%(nom))
+		
+		#Donne tout les droits à l'utilisateur sur sa base de données.
+		cursor.execute("GRANT ALL PRIVILEGES ON %s TO '%s'@'localhost'"%(nom, nom))
+	
+	else:
+		continue
+
+	while True:
+		choix = input(Fore.YELLOW + "\n" + \
+			"------------------  Menu  ---------------\n\n"\
+			"1- Entrer de nouveaux identifiants		\n"\
+			"2- Consulter les identifiants existantes	\n"\
+			"3- Modifier les identifiants				\n"\
+			"4- Supprimer des identifiants			\n"\
+			"5- Génerer un mot de passe				\n"\
+			"6- Quitter le gestionnaire				\n\n "\
+			"-----------------  Menu  ---------------\n\n"\
+			"Que souhaitez-vous faire ? (1 - 6): ")
+		print(Fore.RESET)
+
+
+
+
+		if choix == "1":
+			site = input("Entrez le nom du site : ")
+			mail = input("Entrez le mail correspondant : ")
+			mdp = input("Entrez le mot de passe correspondant : ")
+
+			#Crypte  le mot de passe
+			mdp = mdp.encode("utf-8")
+			mdp = f.encrypt(mdp)
+			mdp = mdp.decode("utf-8")
+			cursor.execute("INSERT INTO " + nom + " VALUES (%s, %s, %s)", (site, mail, mdp))
+			conn.commit()
+			print(Fore.BLUE + "Vos informations ont été enregitrées !")
+			print(Fore.RESET)
+
+		elif choix == "2":
+			site = input("\nDe quel site souhaitez-vous consulter les informations ? : ")
+			try:
+				cursor.execute("SELECT id, mail, mdp FROM " + nom + " WHERE id LIKE %s;",(site,))
+				information = cursor.fetchone()
+				mdp = information[2]
+			except:
+				print(Fore.RED + "\nVous n'avez pas enregistré d'informations pour ce site !")
+				print(Fore.RESET)
+				continue
+
+			try:
+				mdp = mdp.encode("utf-8")
+				mdp = f.decrypt(mdp)
+				mdp = mdp.decode("utf-8")
+				fichier = (Fore.BLUE + "\nSite : " + information[0] + "\nIdentifiant : " + information[1] + "\nMot de passe : " + mdp)
+				print(fichier)
+				print(Fore.RESET)
+			except:
+				print(Fore.RED + "\nVous essayez de lire un mot de passe crypté avec une autre clé !")
+				print(Fore.RESET)
+				continue
+
+		elif choix == "3":
+			site = input("\nDe quel site souhaitez-vous modifier les identifiants ? : ")
+			mail = input("\nEntrez le nouveau mail (ou celui déja existant si vous ne souhaitez pas le modifier)")
+			mdp_clair = input("\nEntrez le nouveau mot de passe (ou celui déja existant si vous ne souhaitez pas le modifier.)")
+			mdp = mdp_clair.encode("utf-8")
+			mdp = f.encrypt(mdp)
+			mdp = mdp.decode("utf-8")
+			print(mdp)
+			print(site)
+			try:
+				cursor.execute("UPDATE " + nom + " SET mail = %s, mdp = %s WHERE id LIKE %s;",(mail, mdp, site))
+				conn.commit()
+
+			except:
+				print(Fore.RED + "\nVous n'avez pas enregistré d'informations pour ce site !")
+				print(Fore.RESET)
+				continue
+
+			print(Fore.BLUE + "\nVos informations ont bien été modifiées !")
+			print(Fore.BLUE + "\nSite : ", site,\
+					"\nMail : ", mail,\
+					"\nMot de passe : ", mdp_clair)
+			print(Fore.RESET)
+
+
+		elif choix == "4":
+			site = input("\nDe quel site souhaitez-vous supprimer les identifiants ? : ")
+			try:
+				cursor.execute("DELETE FROM " + nom + " WHERE id LIKE %s;",(site,))
+				conn.commit()
+			except:
+				print(Fore.RED + "\nVous n'avez pas enregistré d'informations pour ce site !")
+				print(Fore.RESET)
+				continue
+
+		elif choix == "5":
+			digits = string.digits
+			lettres = string.ascii_letters
+			char_speciaux = string.punctuation
+
+			while True:
+				choix1 = input(Fore.YELLOW +\
+				"\n\n------------------------  Génerateur de mots de passe  ---------------------\n\n"\
+				"Quel souhaitez-vous inclure dans votre mot de passe ?\n"\
+				"1- Chiffres \n"\
+				"2- Lettres \n"\
+				"3- Caractères spéciaux\n"\
+				"Exemple de syntaxe: Si je veux Chiffre + Lettre, saisir 12 (Ne pas saisir 21)\n\n"\
+				"------------------------  Génerateur de mots de passe  ---------------------\n\n"\
+				"Que souhaitez-vous faire ? : ")
+				print(Fore.RESET)
+
+
+				nb_char = int(input("\nCombien de caractères ? : "))
+
+				try:
+					if choix1 == "1":
+						charset = digits
+						mdp_gen = random.sample(charset, nb_char)
+						mdp_gen = print(Fore.BLUE + "".join(mdp_gen))
+						print(Fore.RESET)
+						break
+
+					elif choix1 == "2":
+						charset = lettres
+						mdp_gen = random.sample(charset, nb_char)
+						mdp_gen = print(Fore.BLUE + "".join(mdp_gen))
+						print(Fore.RESET)
+						break
+
+					elif choix1 == "3":
+						charset = char_speciaux
+						mdp_gen = random.sample(charset, nb_char)
+						mdp_gen = print(Fore.BLUE + "".join(mdp_gen))
+						print(Fore.RESET)
+						break
+
+					elif choix1 == "12":
+						charset = digits + lettres
+						mdp_gen = random.sample(charset, nb_char)
+						mdp_gen = print(Fore.BLUE + "".join(mdp_gen))
+						print(Fore.RESET)
+						break
+
+					elif choix1 == "13":
+						charset = digits + char_speciaux
+						mdp_gen = random.sample(charset, nb_char)
+						mdp_gen = print(Fore.BLUE + "".join(mdp_gen))
+						print(Fore.RESET)
+						break
+
+					elif choix1 == "123":
+						charset = digits + char_speciaux + lettres
+						mdp_gen = random.sample(charset, nb_char)
+						mdp_gen = print(Fore.BLUE + "".join(mdp_gen))
+						mdp_gen = print(str(mdp_gen))
+						print(Fore.RESET)
+						break
+
+					elif choix1 == "23":
+						charset = lettres + char_speciaux
+						mdp_gen = random.sample(charset, nb_char)
+						mdp_gen = print(Fore.BLUE + "".join(mdp_gen))
+						print(Fore.RESET)
+						break
+					else:
+						continue
+
+				except:
+					print(Fore.RED + "\nLe nombre de caractères désiré est trop grand !\n")
+					print(Fore.RESET)
+					continue
+
+		elif choix == "6":
+			reset = lambda: os.system('reset')
+			reset()
+			sys.exit(0) #Stoppe le programme
+
+		else:
+			continue
